@@ -1,9 +1,13 @@
-  const axios = require("axios");
-  require("dotenv").config();
+const axios = require("axios");
+require("dotenv").config();
 
-  let token = null;
+let token = null;
+let isAuthenticating = false;
 
-  async function authenticate() {
+async function authenticate() {
+  if (token || isAuthenticating) return;
+  isAuthenticating = true;
+
   try {
     const res = await axios.post("http://20.244.56.144/evaluation-service/auth", {
       email: process.env.EMAIL,
@@ -14,38 +18,45 @@
       clientSecret: process.env.CLIENT_SECRET
     });
 
-    token = res.data["access_token"];
+    token = res.data["access token"] || res.data["access_token"];
     console.log("Token received:", token);
 
   } catch (err) {
-    console.error("AUTH ERROR (full):", err.response?.data || err.message || err);
+    console.error("AUTH ERROR:", err.response?.data || err.message || err);
     console.error("HTTP Status:", err.response?.status || "No status");
+  } finally {
+    isAuthenticating = false;
   }
 }
 
-
-  async function log(stack, level, pkg, message) {
-    try {
-      if (!token) await authenticate();
-
-      const res = await axios.post(
-        "http://20.244.56.144/evaluation-service/logs",
-        {
-          stack,
-          level,
-          package: pkg,
-          message
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      );
-
-    } catch (err) {
-      console.error("Log error:", err.response?.data || err.message);
+async function log(stack, level, pkg, message) {
+  try {
+    if (!token) await authenticate();
+    if (!token) {
+      console.warn("Token not available after authentication, skipping log.");
+      return;
     }
-  }
 
-  module.exports = log;
+    const res = await axios.post(
+      "http://20.244.56.144/evaluation-service/logs",
+      {
+        stack,
+        level,
+        package: pkg,
+        message
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+
+    console.log("Log sent:", res.data.message || "Success");
+
+  } catch (err) {
+    console.error("Log error:", err.response?.data || err.message);
+  }
+}
+
+module.exports = log;
